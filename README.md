@@ -1,2 +1,2 @@
 # anki-irl
-Anki URL test page
+Anki irl test page
