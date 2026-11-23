@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Anki URL test</title>
+<style>
+:root{--bg:#fff;--fg:#1a1a1a;--btn:#2563eb;--btnfg:#fff;--mut:#666}
+@media (prefers-color-scheme: dark){:root{--bg:#121212;--fg:#eee;--btn:#3b82f6;--mut:#aaa}}
+body{background:var(--bg);color:var(--fg);font-family:-apple-system,system-ui,sans-serif;margin:0;padding:20px;line-height:1.5}
+h1{font-size:1.2rem}
+a.b,button{display:block;width:100%;box-sizing:border-box;margin:12px 0;padding:14px;border:0;border-radius:10px;background:var(--btn);color:var(--btnfg);font-size:1rem;text-align:center;text-decoration:none}
+p{color:var(--mut);font-size:.9rem}
+#log{white-space:pre-wrap;font-family:ui-monospace,monospace;font-size:.8rem}
+</style>
+</head>
+<body>
+<h1>Anki URL test</h1>
+<p>Each button adds a 猫 test card to Mining, then should jump to the Anki browser. Delete the test cards afterwards.</p>
+
+<a class="b" id="linkA" href="#">A: plain link</a>
+<button id="btnB">B: window.location (button)</button>
+
+<p id="log"></p>
+
+<script>
+var url = "anki://x-callback-url/addnote?type=Lapis&deck=Mining"
+  + "&fldExpression=" + encodeURIComponent("猫")
+  + "&fldSentence=" + encodeURIComponent("<b>猫</b>が好きです。")
+  + "&fldMainDefinition=" + encodeURIComponent("cat")
+  + "&fldFrequency=1234&fldFreqSort=1234&dupes=1"
+  + "&x-success=" + encodeURIComponent("anki://x-callback-url/search?query=added:1");
+function log(m){document.getElementById("log").textContent += m + "\n";}
+document.getElementById("linkA").href = url;
+document.getElementById("btnB").onclick = function(){
+  try{ window.location.href = url; log("B fired"); }catch(e){ log("B error: " + e); }
+};
+log("In iframe: " + (window.self !== window.top));
+</script>
+</body>
+</html>
