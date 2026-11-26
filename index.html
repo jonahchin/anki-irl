@@ -23,7 +23,7 @@ button:active{transform:scale(.98)}
 button.ghost{background:var(--soft);color:var(--fg)}
 button.t{display:inline-block;width:auto;padding:6px 12px;margin:3px 3px 0 0;border-radius:999px;background:var(--soft);color:var(--fg);font-weight:500;font-size:.95rem}
 button.t.on{background:var(--pink2);color:#fff}
-.row{display:flex;gap:8px}.row .pick{flex:1}
+.row{display:flex;gap:8px;margin-bottom:8px}.row .pick{flex:1}
 .pick{display:block;text-align:center;padding:13px;border-radius:14px;background:var(--soft);font-weight:600}
 textarea,input[type=text]{width:100%;font-size:1rem;background:var(--bg);color:var(--fg);border:1px solid var(--bd);border-radius:12px;padding:10px;margin:4px 0}
 textarea{height:90px}
@@ -42,6 +42,7 @@ select{font-size:1rem;padding:6px;border-radius:10px;background:var(--bg);color:
 .frame img{max-width:100%;max-height:100%;object-fit:contain}
 #st{white-space:pre-line}#off,#ver{color:var(--mut);font-size:.85rem}
 #upd{position:fixed;top:max(8px,env(safe-area-inset-top));left:50%;transform:translateX(-50%);z-index:20;background:var(--pink2);color:#fff;padding:8px 16px;border-radius:999px;font-size:.9rem;box-shadow:0 4px 14px rgba(0,0,0,.25)}
+#zoom{position:relative;transform-origin:0 0}
 </style>
 </head>
 <body>
@@ -49,8 +50,9 @@ select{font-size:1rem;padding:6px;border-radius:10px;background:var(--bg);color:
 <h1>🌸 Mining</h1>
 <div class="card">
 <div class="row"><label class="pick"><input type="file" id="cam" accept="image/*" capture="environment" hidden>📷 Take photo</label><label class="pick"><input type="file" id="photo" accept="image/*" hidden>🖼️ Choose</label></div>
-<div id="cw" hidden><div id="stage"><img id="pimg" alt=""><div id="box"></div></div>
-<p>Drag to select the text area, or skip to use the whole photo.</p>
+<div id="cw" hidden><div id="stage"><div id="zoom"><img id="pimg" alt=""><div id="box"></div></div></div>
+<p>Drag to select the text. Pinch to zoom, two fingers to pan. Done with no selection uses the whole photo.</p>
+<button class="ghost" id="zreset">Reset zoom</button>
 <button id="cropbtn" class="sticky">Done</button></div>
 <img id="crop" alt="" hidden>
 <button class="ghost" id="hidebtn" hidden>Hide photo</button>
@@ -64,10 +66,11 @@ select{font-size:1rem;padding:6px;border-radius:10px;background:var(--bg);color:
 <input type="text" id="ntype" placeholder="Note type" value="Lapis">
 <p>Card photo: <select id="pm"><option>tight</option><option>padded</option><option>whole</option></select></p>
 <p><label><input type="checkbox" id="au"> Fetch word audio</label></p>
-<p>Import dictionary zips (JMdict, JPDBv2, BCCWJ, CC100, アクセント辞典). Keep the screen on.</p>
+<div id="dl"></div>
+<p id="warn" hidden>Keep the screen on while importing.</p>
 <input type="file" id="zips" accept=".zip" multiple>
 <button class="ghost" id="clr">Clear dictionaries</button>
-<div id="dl"></div><div id="st"></div>
+<div id="st"></div>
 <div id="off"></div><div id="ver"></div>
 </details>
 
@@ -84,7 +87,14 @@ function openDB(){return new Promise(function(ok,no){var r=indexedDB.open('minin
   d.createObjectStore('meta',{autoIncrement:true}).createIndex('e','e');
   d.createObjectStore('dicts',{keyPath:'t'});};
  r.onsuccess=function(){ok(r.result)};r.onerror=function(){no(r.error)};});}
-async function refresh(){var d=await req(S('dicts').getAll());d.forEach(function(x){Object.assign(TAGS,x.tags||{})});$('dl').textContent=d.length?'Imported: '+d.map(function(x){return x.t}).join(', '):'No dictionaries imported'}
+var EXP=[['JMdict',/^JMdict/i],['JPDBv2㋕',/JPDB/i],['BCCWJ',/BCCWJ/i],['CC100',/CC100/i],['アクセント辞典',/アクセント/]];
+async function refresh(){
+ var d=await req(S('dicts').getAll()),ts=d.map(function(x){return x.t}),used={},h='';
+ d.forEach(function(x){Object.assign(TAGS,x.tags||{})});
+ EXP.forEach(function(e){var m=ts.filter(function(t){return e[1].test(t)});m.forEach(function(t){used[t]=1});
+  h+=(m.length?'✓ ':'○ ')+e[0]+(m.length?'':' (not added yet)')+'<br>'});
+ ts.filter(function(t){return !used[t]}).forEach(function(t){h+='• other: '+esc(t)+'<br>'});
+ $('dl').innerHTML=h}
 
 /* ---------- import ---------- */
 var curKey='';
@@ -112,10 +122,10 @@ async function importZip(file){
  }
  await req(S('dicts',1).put({t:title,tags:tagMap}));line(title,'✓ done');
 }
-$('zips').onchange=async function(e){var fs=Array.from(e.target.files);IL={};
+$('zips').onchange=async function(e){var fs=Array.from(e.target.files);IL={};$('warn').hidden=false;
  for(var f of fs){try{await importZip(f)}catch(x){line(curKey,'✗ '+x.message)}
-  await new Promise(function(r){setTimeout(r,400)})}
- refresh();e.target.value=''};
+  refresh();await new Promise(function(r){setTimeout(r,400)})}
+ refresh();$('warn').hidden=true;e.target.value=''};
 $('clr').onclick=async function(){if(!confirm('Delete all dictionaries?'))return;
  var tx=DB.transaction(['terms','meta','dicts'],'readwrite');['terms','meta','dicts'].forEach(function(n){tx.objectStore(n).clear()});
  await done(tx);refresh();st('Cleared')};
@@ -194,21 +204,35 @@ function sentence(i,L){var a=i,b=i+L,end=/[。！？\n]/;
  return esc(T.slice(a,i))+'<b>'+esc(T.slice(i,i+L))+'</b>'+esc(T.slice(i+L,b))}
 
 /* ---------- UI ---------- */
-var img0=new Image(),sel=null,drag=false,autoHid=false,RECT=null,picCache={},audioC={},SMALL_W=600,SMALL_Q=0.6,PAD=0.4,MODES=['tight','padded','whole'],pm='padded',AU=true;
+var img0=new Image(),sel=null,drag=false,autoHid=false,Z=1,TX=0,TY=0,ptrs={},pinch=null,prevSel=null,RECT=null,picCache={},audioC={},SMALL_W=600,SMALL_Q=0.6,PAD=0.4,MODES=['tight','padded','whole'],pm='padded',AU=true;
 try{pm=localStorage.getItem('pm')||'padded';AU=localStorage.getItem('au')!=='0'}catch(e){}
 $('pm').value=pm;$('au').checked=AU;
 $('pm').onchange=function(){pm=this.value;try{localStorage.setItem('pm',pm)}catch(e){}};
 $('au').onchange=function(){AU=this.checked;try{localStorage.setItem('au',AU?'1':'0')}catch(e){}};
 $('photo').onchange=$('cam').onchange=function(e){var f=e.target.files[0];if(!f)return;
- img0=new Image();img0.onload=function(){$('pimg').src=img0.src;$('cw').hidden=false;$('crop').hidden=true;$('recrop').hidden=true;$('hidebtn').hidden=true;autoHid=false;$('box').style.display='none';sel=null;RECT=null;picCache={}};
+ img0=new Image();img0.onload=function(){$('pimg').src=img0.src;$('cw').hidden=false;$('crop').hidden=true;$('recrop').hidden=true;$('hidebtn').hidden=true;autoHid=false;$('box').style.display='none';sel=null;RECT=null;picCache={};Z=1;TX=0;TY=0;applyZ()};
  img0.src=URL.createObjectURL(f)};
-var pt=function(e){var r=$('pimg').getBoundingClientRect();return {x:Math.max(0,Math.min(r.width,e.clientX-r.left)),y:Math.max(0,Math.min(r.height,e.clientY-r.top))}};
+var pt=function(e){var r=$('pimg').getBoundingClientRect();return {x:Math.max(0,Math.min(r.width/Z,(e.clientX-r.left)/Z)),y:Math.max(0,Math.min(r.height/Z,(e.clientY-r.top)/Z))}};
 function drawBox(){var b=$('box').style,a=sel.a,c=sel.b;b.display='block';b.left=Math.min(a.x,c.x)+'px';b.top=Math.min(a.y,c.y)+'px';b.width=Math.abs(a.x-c.x)+'px';b.height=Math.abs(a.y-c.y)+'px'}
-$('stage').onpointerdown=function(e){this.setPointerCapture(e.pointerId);drag=true;sel={a:pt(e),b:pt(e)};drawBox()};
-$('stage').onpointermove=function(e){if(drag){sel.b=pt(e);drawBox()}};
-$('stage').onpointerup=function(){drag=false};
+function applyZ(){$('zoom').style.transform='translate('+TX+'px,'+TY+'px) scale('+Z+')'}
+function clampT(){var w=$('pimg').offsetWidth,h=$('pimg').offsetHeight;TX=Math.min(0,Math.max(w-w*Z,TX));TY=Math.min(0,Math.max(h-h*Z,TY))}
+$('zreset').onclick=function(){Z=1;TX=0;TY=0;applyZ()};
+$('stage').onpointerdown=function(e){this.setPointerCapture(e.pointerId);ptrs[e.pointerId]={x:e.clientX,y:e.clientY};
+ var ids=Object.keys(ptrs);
+ if(ids.length==1){prevSel=sel;drag=true;sel={a:pt(e),b:pt(e)};drawBox()}
+ else if(ids.length==2){
+  if(drag){drag=false;sel=prevSel;if(sel)drawBox();else $('box').style.display='none'}
+  var a=ptrs[ids[0]],b=ptrs[ids[1]],r=$('stage').getBoundingClientRect();
+  pinch={d:Math.hypot(a.x-b.x,a.y-b.y),z:Z,px:((a.x+b.x)/2-r.left-TX)/Z,py:((a.y+b.y)/2-r.top-TY)/Z}}};
+$('stage').onpointermove=function(e){
+ if(!ptrs[e.pointerId])return;ptrs[e.pointerId]={x:e.clientX,y:e.clientY};
+ var ids=Object.keys(ptrs);
+ if(ids.length==2&&pinch){var a=ptrs[ids[0]],b=ptrs[ids[1]],r=$('stage').getBoundingClientRect(),cx=(a.x+b.x)/2-r.left,cy=(a.y+b.y)/2-r.top;
+  Z=Math.max(1,Math.min(6,pinch.z*Math.hypot(a.x-b.x,a.y-b.y)/pinch.d));TX=cx-pinch.px*Z;TY=cy-pinch.py*Z;clampT();applyZ()}
+ else if(drag){sel.b=pt(e);drawBox()}};
+$('stage').onpointerup=$('stage').onpointercancel=function(e){delete ptrs[e.pointerId];if(Object.keys(ptrs).length<2)pinch=null;drag=false};
 $('cropbtn').onclick=function(){
- var k=img0.naturalWidth/$('pimg').getBoundingClientRect().width,x=0,y=0,w=img0.naturalWidth,h=img0.naturalHeight;
+ var k=img0.naturalWidth/$('pimg').offsetWidth,x=0,y=0,w=img0.naturalWidth,h=img0.naturalHeight;
  if(sel){var bw=Math.abs(sel.a.x-sel.b.x),bh=Math.abs(sel.a.y-sel.b.y);
   if(bw>10&&bh>10){x=Math.min(sel.a.x,sel.b.x)*k;y=Math.min(sel.a.y,sel.b.y)*k;w=bw*k;h=bh*k}}
  RECT={x:x,y:y,w:w,h:h};picCache={};
@@ -249,7 +273,7 @@ async function findAudio(w){
 function loadAudio(w){findAudio(w).then(function(h){audioC[w]=h}).catch(function(){audioC[w]=''}).then(function(){if(cur&&cur.gs&&cur.gs[cur.n].e==w)draw()})}
 
 /* ---------- text + card ---------- */
-$('txt').oninput=function(){if(RECT&&!autoHid&&$('cw').hidden&&!$('crop').hidden){setPhoto(false);autoHid=true}T=$('txt').value.trim();
+$('txt').oninput=function(){if(RECT&&!autoHid&&$('cw').hidden&&!$('crop').hidden){var y0=$('txt').getBoundingClientRect().top;setPhoto(false);autoHid=true;window.scrollBy(0,$('txt').getBoundingClientRect().top-y0)}T=$('txt').value.trim();
  $('out').innerHTML=T.split('').map(function(c,i){return c=='\n'?'<br>':'<span data-i="'+i+'">'+esc(c)+'</span>'}).join('');
  $('card').hidden=true};
 $('out').onclick=async function(e){
@@ -297,8 +321,8 @@ $('card').onclick=function(e){var b=e.target.closest('button');if(!b)return;
 ['deck','ntype'].forEach(function(k){try{var v=localStorage.getItem(k);if(v)$(k).value=v}catch(e){}
  $(k).onchange=function(){try{localStorage.setItem(k,$(k).value)}catch(e){}}});
 openDB().then(function(d){DB=d;refresh()});
-var VER='v4';$('ver').textContent='Version '+VER;
-function offline(){caches.open('mining-v4').then(function(c){return c.keys()}).then(function(a){$('off').textContent=a.length?'Offline ready ('+a.length+' files saved)':'Offline not ready yet'}).catch(function(){$('off').textContent='Offline not available'})}
+var VER='v5';$('ver').textContent='Version '+VER;
+function offline(){caches.open('mining-v5').then(function(c){return c.keys()}).then(function(a){$('off').textContent=a.length?'Offline ready ('+a.length+' files saved)':'Offline not ready yet'}).catch(function(){$('off').textContent='Offline not available'})}
 if('serviceWorker' in navigator){
  var had=!!navigator.serviceWorker.controller,ban=function(){$('upd').hidden=false};
  $('upd').onclick=function(){location.reload()};
