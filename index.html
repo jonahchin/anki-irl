@@ -4,9 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Mining</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#ec6f9d">
+<meta name="apple-mobile-web-app-capable" content="yes">
 <link rel="apple-touch-icon" href="icon.png">
 <meta name="apple-mobile-web-app-title" content="Mining">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js"></script>
 <style>
 :root{--bg:#fff5f8;--card:#fff;--fg:#4a3b45;--mut:#9a8791;--pink:#f48fb1;--pink2:#ec6f9d;--soft:#fde4ec;--hl:#ffd6e3;--bd:#f6d3de;--sh:0 4px 14px rgba(236,111,157,.12)}
 @media (prefers-color-scheme:dark){:root{--bg:#1d1519;--card:#2a1f25;--fg:#f3e6ec;--mut:#a8949d;--pink:#e57fa6;--pink2:#d96391;--soft:#3a2830;--hl:#5a3345;--bd:#43303a;--sh:none}}
@@ -19,6 +23,7 @@ button:active{transform:scale(.98)}
 button.ghost{background:var(--soft);color:var(--fg)}
 button.t{display:inline-block;width:auto;padding:6px 12px;margin:3px 3px 0 0;border-radius:999px;background:var(--soft);color:var(--fg);font-weight:500;font-size:.95rem}
 button.t.on{background:var(--pink2);color:#fff}
+.row{display:flex;gap:8px}.row .pick{flex:1}
 .pick{display:block;text-align:center;padding:13px;border-radius:14px;background:var(--soft);font-weight:600}
 textarea,input[type=text]{width:100%;font-size:1rem;background:var(--bg);color:var(--fg);border:1px solid var(--bd);border-radius:12px;padding:10px;margin:4px 0}
 textarea{height:90px}
@@ -29,12 +34,15 @@ textarea{height:90px}
 .hl{background:var(--hl);border-radius:6px}
 #st,#dl,details p{color:var(--mut);font-size:.85rem}
 details{color:var(--mut);padding:0 4px}summary{padding:8px 0}
-</style></style>
+.tg{display:inline-block;width:auto;padding:2px 9px;margin:2px 4px 2px 0;border-radius:8px;background:var(--soft);color:var(--fg);font-size:.8rem;font-weight:500}
+.mut{color:var(--mut);font-size:.85rem}
+select{font-size:1rem;padding:6px;border-radius:10px;background:var(--bg);color:var(--fg);border:1px solid var(--bd)}
+</style>
 </head>
 <body>
 <h1>🌸 Mining</h1>
 <div class="card">
-<label class="pick"><input type="file" id="photo" accept="image/*" hidden>📷 Choose photo</label>
+<div class="row"><label class="pick"><input type="file" id="cam" accept="image/*" capture="environment" hidden>📷 Take photo</label><label class="pick"><input type="file" id="photo" accept="image/*" hidden>🖼️ Choose</label></div>
 <div id="cw" hidden><div id="stage"><img id="pimg" alt=""><div id="box"></div></div>
 <p>Drag to select the text area, or skip to use the whole photo.</p>
 <button id="cropbtn">Done</button></div>
@@ -42,11 +50,13 @@ details{color:var(--mut);padding:0 4px}summary{padding:8px 0}
 <button class="ghost" id="recrop" hidden>Re-crop</button>
 </div>
 <div class="card"><textarea id="txt" placeholder="Paste Japanese text"></textarea>
-<button id="go">Show text</button><div id="out"></div></div>
+<div id="out"></div></div>
 <div id="card" class="card" hidden></div>
 <details id="setup"><summary>⚙️ Setup</summary>
 <input type="text" id="deck" placeholder="Deck" value="Mining">
 <input type="text" id="ntype" placeholder="Note type" value="Lapis">
+<p>Card photo: <select id="pm"><option>tight</option><option>padded</option><option>whole</option></select></p>
+<p><label><input type="checkbox" id="au"> Fetch word audio</label></p>
 <p>Import dictionary zips (JMdict, JPDBv2, BCCWJ, CC100, アクセント辞典). Keep the screen on.</p>
 <input type="file" id="zips" accept=".zip" multiple>
 <button class="ghost" id="clr">Clear dictionaries</button>
@@ -54,7 +64,7 @@ details{color:var(--mut);padding:0 4px}summary{padding:8px 0}
 </details>
 
 <script>
-var $=function(i){return document.getElementById(i)},DB,T='',cur=null,enc=encodeURIComponent,JM=/^JMdict/i;
+var $=function(i){return document.getElementById(i)},DB,TAGS={},T='',cur=null,enc=encodeURIComponent,JM=/^JMdict/i;
 var esc=function(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')};
 var req=function(r){return new Promise(function(ok,no){r.onsuccess=function(){ok(r.result)};r.onerror=function(){no(r.error)}})};
 var done=function(t){return new Promise(function(ok,no){t.oncomplete=ok;t.onerror=t.onabort=function(){no(t.error)}})};
@@ -66,20 +76,21 @@ function openDB(){return new Promise(function(ok,no){var r=indexedDB.open('minin
   d.createObjectStore('meta',{autoIncrement:true}).createIndex('e','e');
   d.createObjectStore('dicts',{keyPath:'t'});};
  r.onsuccess=function(){ok(r.result)};r.onerror=function(){no(r.error)};});}
-async function refresh(){var d=await req(S('dicts').getAll());$('dl').textContent=d.length?'Imported: '+d.map(function(x){return x.t}).join(', '):'No dictionaries imported'}
+async function refresh(){var d=await req(S('dicts').getAll());d.forEach(function(x){Object.assign(TAGS,x.tags||{})});$('dl').textContent=d.length?'Imported: '+d.map(function(x){return x.t}).join(', '):'No dictionaries imported'}
 
 /* ---------- import ---------- */
 async function importZip(file){
  var z=await JSZip.loadAsync(file),title=JSON.parse(await z.file('index.json').async('string')).title;
  if(await req(S('dicts').get(title))){st(title+' already imported');return}
- var names=Object.keys(z.files).filter(function(n){return /^term(_meta)?_bank_\d+\.json$/.test(n)}).sort(function(a,b){return a.localeCompare(b,undefined,{numeric:true})}),n=0;
+ var names=Object.keys(z.files).filter(function(n){return /^(term(_meta)?|tag)_bank_\d+\.json$/.test(n)}).sort(function(a,b){return a.localeCompare(b,undefined,{numeric:true})}),n=0,tagMap={};
  for(var f of names){
   n++;st(title+': '+n+'/'+names.length);
+  if(f.indexOf('tag_bank')==0){JSON.parse(await z.file(f).async('string')).forEach(function(t){tagMap[t[0]]=t[3]});continue}
   var isT=f.indexOf('term_bank')==0;
   if(isT&&!JM.test(title))continue;
   var rows=JSON.parse(await z.file(f).async('string')),tx=DB.transaction(['terms','meta'],'readwrite'),T1=tx.objectStore('terms'),M=tx.objectStore('meta');
   rows.forEach(function(r){
-   if(isT)T1.put({d:title,e:r[0],r:r[1]||r[0],t:r[2],ru:r[3],g:r[5],q:r[6]});
+   if(isT)T1.put({d:title,e:r[0],r:r[1]||r[0],t:r[2],ru:r[3],g:r[5],q:r[6],tt:r[7]});
    else if(r[1]=='freq'){var x=r[2],rd,fq=x;if(x&&x.reading!==undefined){rd=x.reading;fq=x.frequency}
     var o=fq&&typeof fq=='object',v=o?fq.value:fq,dv=o&&fq.displayValue!=null?fq.displayValue:v;
     M.put({d:title,e:r[0],m:'f',rd:rd,v:v,dv:String(dv)})}
@@ -87,7 +98,7 @@ async function importZip(file){
   });
   await done(tx);
  }
- S('dicts',1).put({t:title});st(title+' done');
+ S('dicts',1).put({t:title,tags:tagMap});st(title+' done');
 }
 $('zips').onchange=async function(e){var fs=Array.from(e.target.files);
  for(var f of fs){try{await importZip(f)}catch(x){st('Error: '+x.message)}}
@@ -170,9 +181,13 @@ function sentence(i,L){var a=i,b=i+L,end=/[。！？\n]/;
  return esc(T.slice(a,i))+'<b>'+esc(T.slice(i,i+L))+'</b>'+esc(T.slice(i+L,b))}
 
 /* ---------- UI ---------- */
-var PIC='',img0=new Image(),sel=null,drag=false,SMALL_W=600,SMALL_Q=0.6;
-$('photo').onchange=function(e){var f=e.target.files[0];if(!f)return;
- img0=new Image();img0.onload=function(){$('pimg').src=img0.src;$('cw').hidden=false;$('crop').hidden=true;$('recrop').hidden=true;$('box').style.display='none';sel=null;PIC=''};
+var img0=new Image(),sel=null,drag=false,RECT=null,picCache={},audioC={},SMALL_W=600,SMALL_Q=0.6,PAD=0.4,MODES=['tight','padded','whole'],pm='padded',AU=true;
+try{pm=localStorage.getItem('pm')||'padded';AU=localStorage.getItem('au')!=='0'}catch(e){}
+$('pm').value=pm;$('au').checked=AU;
+$('pm').onchange=function(){pm=this.value;try{localStorage.setItem('pm',pm)}catch(e){}};
+$('au').onchange=function(){AU=this.checked;try{localStorage.setItem('au',AU?'1':'0')}catch(e){}};
+$('photo').onchange=$('cam').onchange=function(e){var f=e.target.files[0];if(!f)return;
+ img0=new Image();img0.onload=function(){$('pimg').src=img0.src;$('cw').hidden=false;$('crop').hidden=true;$('recrop').hidden=true;$('box').style.display='none';sel=null;RECT=null;picCache={}};
  img0.src=URL.createObjectURL(f)};
 var pt=function(e){var r=$('pimg').getBoundingClientRect();return {x:Math.max(0,Math.min(r.width,e.clientX-r.left)),y:Math.max(0,Math.min(r.height,e.clientY-r.top))}};
 function drawBox(){var b=$('box').style,a=sel.a,c=sel.b;b.display='block';b.left=Math.min(a.x,c.x)+'px';b.top=Math.min(a.y,c.y)+'px';b.width=Math.abs(a.x-c.x)+'px';b.height=Math.abs(a.y-c.y)+'px'}
@@ -183,13 +198,43 @@ $('cropbtn').onclick=function(){
  var k=img0.naturalWidth/$('pimg').getBoundingClientRect().width,x=0,y=0,w=img0.naturalWidth,h=img0.naturalHeight;
  if(sel){var bw=Math.abs(sel.a.x-sel.b.x),bh=Math.abs(sel.a.y-sel.b.y);
   if(bw>10&&bh>10){x=Math.min(sel.a.x,sel.b.x)*k;y=Math.min(sel.a.y,sel.b.y)*k;w=bw*k;h=bh*k}}
+ RECT={x:x,y:y,w:w,h:h};picCache={};
  var c=document.createElement('canvas'),m=Math.min(1,2000/w);c.width=Math.round(w*m);c.height=Math.round(h*m);
  c.getContext('2d').drawImage(img0,x,y,w,h,0,0,c.width,c.height);
- c.toBlob(function(b){$('crop').src=URL.createObjectURL(b);$('crop').hidden=false;$('cw').hidden=true;$('recrop').hidden=false},'image/jpeg',0.92);
- var q=document.createElement('canvas'),r=Math.min(1,SMALL_W/c.width);q.width=Math.round(c.width*r);q.height=Math.round(c.height*r);
- q.getContext('2d').drawImage(c,0,0,q.width,q.height);PIC=q.toDataURL('image/jpeg',SMALL_Q)};
+ c.toBlob(function(b){$('crop').src=URL.createObjectURL(b);$('crop').hidden=false;$('cw').hidden=true;$('recrop').hidden=false},'image/jpeg',0.92)};
 $('recrop').onclick=function(){$('cw').hidden=false;$('crop').hidden=true;$('recrop').hidden=true};
-$('go').onclick=function(){T=$('txt').value.trim();
+function picFor(mode){
+ if(!RECT)return '';if(picCache[mode])return picCache[mode];
+ var R=RECT,x=R.x,y=R.y,w=R.w,h=R.h,W=img0.naturalWidth,H=img0.naturalHeight;
+ if(mode=='whole'){x=0;y=0;w=W;h=H}
+ else if(mode=='padded'){var px=w*PAD,py=h*PAD;x=Math.max(0,R.x-px);y=Math.max(0,R.y-py);w=Math.min(W,R.x+R.w+px)-x;h=Math.min(H,R.y+R.h+py)-y}
+ var c=document.createElement('canvas'),r=Math.min(1,SMALL_W/w);c.width=Math.round(w*r);c.height=Math.round(h*r);
+ c.getContext('2d').drawImage(img0,x,y,w,h,0,0,c.width,c.height);
+ return picCache[mode]=c.toDataURL('image/jpeg',SMALL_Q)}
+
+/* ---------- audio (Lingua Libre via Wikimedia) ---------- */
+async function api(p){return (await fetch('https://commons.wikimedia.org/w/api.php?origin=*&format=json&'+new URLSearchParams(p))).json()}
+async function wavToMp3(blob){
+ var ac=new (window.AudioContext||window.webkitAudioContext)(),buf=await ac.decodeAudioData(await blob.arrayBuffer());ac.close();
+ var sr=22050,off=new OfflineAudioContext(1,Math.ceil(buf.duration*sr),sr),src=off.createBufferSource();src.buffer=buf;src.connect(off.destination);src.start();
+ var f=(await off.startRendering()).getChannelData(0),pcm=new Int16Array(f.length),i;
+ for(i=0;i<f.length;i++){var v=Math.max(-1,Math.min(1,f[i]));pcm[i]=v<0?v*32768:v*32767}
+ var enc=new lamejs.Mp3Encoder(1,sr,32),parts=[],o;
+ for(i=0;i<pcm.length;i+=1152){o=enc.encodeBuffer(pcm.subarray(i,i+1152));if(o.length)parts.push(o)}
+ o=enc.flush();if(o.length)parts.push(o);
+ return new Blob(parts,{type:'audio/mpeg'})}
+async function findAudio(w){
+ var s=await api({action:'query',list:'search',srnamespace:6,srlimit:20,srsearch:'LL-Q5287 (jpn) '+w}),
+  t=s.query.search.map(function(x){return x.title.replace(/^File:/,'')}).filter(function(n){return n.endsWith('-'+w+'.wav')});
+ if(!t.length)return '';
+ var q=await api({action:'query',prop:'imageinfo',iiprop:'url',titles:'File:'+t[0]}),ii=Object.values(q.query.pages)[0].imageinfo[0],
+  mp3=await wavToMp3(await (await fetch(ii.url)).blob());
+ var h=await new Promise(function(ok){var fr=new FileReader();fr.onload=function(){ok('<audio controls src="'+fr.result+'"></audio>')};fr.readAsDataURL(mp3)});
+ return h.length>40000?'':h}
+function loadAudio(w){findAudio(w).then(function(h){audioC[w]=h}).catch(function(){audioC[w]=''}).then(function(){if(cur&&cur.gs&&cur.gs[cur.n].e==w)draw()})}
+
+/* ---------- text + card ---------- */
+$('txt').oninput=function(){T=$('txt').value.trim();
  $('out').innerHTML=T.split('').map(function(c,i){return c=='\n'?'<br>':'<span data-i="'+i+'">'+esc(c)+'</span>'}).join('');
  $('card').hidden=true};
 $('out').onclick=async function(e){
@@ -208,19 +253,27 @@ async function pick(mi){
 var sp=function(p){return '<span style="display:inline;"><span>[</span><span>'+p+'</span><span>]</span></span>'};
 function draw(){
  var g=cur.gs[cur.n],cat=g.ps.map(function(p){return p==0?'heiban':p==1?'atamadaka':p==mora(g.r)?'odaka':'nakadaka'}).join(',');
+ if(AU&&audioC[g.e]===undefined){audioC[g.e]=null;loadAudio(g.e)}
+ var au=AU?audioC[g.e]:'',pic=picFor(pm),tt=[];
+ g.rows.forEach(function(r){(r.tt||'').split(' ').forEach(function(x){if(x&&tt.indexOf(x)<0)tt.push(x)})});
  var F={Expression:g.e,ExpressionFurigana:furi(g.e,g.r),ExpressionReading:g.r,Sentence:cur.sentence,MainDefinition:defn(g.rows),
   Frequency:g.fr.length?'<ul style="text-align: left;">'+g.fr.map(function(x){return '<li>'+esc(x.d)+': '+esc(x.dv)+'</li>'}).join('')+'</ul>':'',
   FreqSort:String(g.fs),
   PitchPosition:g.ps.length==1?sp(g.ps[0]):g.ps.length?'<ol>'+g.ps.map(function(p){return '<li>'+sp(p)+'</li>'}).join('')+'</ol>':'',
-  PitchCategories:cat,IsClickCard:'y',Picture:PIC?'<img src="'+PIC+'">':''};
+  PitchCategories:cat,IsClickCard:'y',Picture:pic?'<img src="'+pic+'">':'',ExpressionAudio:au||''};
  cur.F=F;
  var lens=cur.ms.length>1?'<div>'+cur.ms.map(function(m,j){return '<button class="t'+(j==cur.mi?' on':'')+'" data-m="'+j+'">'+esc(T.substr(cur.i,m.L))+'</button>'}).join('')+'</div>':'';
  var ents=cur.gs.length>1?'<div>'+cur.gs.map(function(x,j){return '<button class="t'+(j==cur.n?' on':'')+'" data-n="'+j+'">'+esc(x.e)+'【'+esc(x.r)+'】</button>'}).join('')+'</div>':'';
+ var tags=tt.length?'<div>'+tt.map(function(x){return '<button class="tg" data-tag="'+esc(x)+'">'+esc(x)+'</button>'}).join('')+'</div><div class="mut" id="tagd"></div>':'';
+ var thumb=pic?'<div><img src="'+pic+'" style="width:100%;border-radius:12px;margin-top:8px"><button class="t" data-pm="1">Photo: '+pm+' ▸</button></div>':'';
+ var aud=AU?'<div class="mut">🔊 '+(au?'audio ready':au===''?'no audio found':'looking for audio…')+'</div>'+(au||''):'';
  $('card').hidden=false;
- $('card').innerHTML=lens+ents+'<h2>'+esc(g.e)+' 【'+esc(g.r)+'】</h2><div>'+F.PitchPosition+' '+cat+'</div><div>'+F.Frequency+'</div><div>FreqSort: '+(F.FreqSort||'–')+'</div><div>'+F.Sentence+'</div>'+F.MainDefinition+'<button id="send">Send to Anki</button>'}
+ $('card').innerHTML=lens+ents+'<h2>'+esc(g.e)+' 【'+esc(g.r)+'】</h2>'+tags+'<div>'+F.PitchPosition+' '+cat+'</div><div>'+F.Frequency+'</div><div>FreqSort: '+(F.FreqSort||'–')+'</div>'+aud+'<div>'+F.Sentence+'</div>'+thumb+F.MainDefinition+'<button id="send">Send to Anki</button>'}
 $('card').onclick=function(e){var b=e.target.closest('button');if(!b)return;
  if(b.dataset.m!=null)pick(+b.dataset.m);
  else if(b.dataset.n!=null){cur.n=+b.dataset.n;draw()}
+ else if(b.dataset.pm){pm=MODES[(MODES.indexOf(pm)+1)%3];draw()}
+ else if(b.dataset.tag){$('tagd').textContent=b.dataset.tag+': '+(TAGS[b.dataset.tag]||'no description')}
  else if(b.id=='send'){
   var u='anki://x-callback-url/addnote?type='+enc($('ntype').value)+'&deck='+enc($('deck').value)
    +'&x-success='+enc('anki://x-callback-url/search?query='+enc('added:1'));
@@ -229,6 +282,7 @@ $('card').onclick=function(e){var b=e.target.closest('button');if(!b)return;
 ['deck','ntype'].forEach(function(k){try{var v=localStorage.getItem(k);if(v)$(k).value=v}catch(e){}
  $(k).onchange=function(){try{localStorage.setItem(k,$(k).value)}catch(e){}}});
 openDB().then(function(d){DB=d;refresh()});
+if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(function(){});
 </script>
 </body>
 </html>
