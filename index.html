@@ -28,7 +28,7 @@ button.t.on{background:var(--pink2);color:#fff}
 textarea,input[type=text]{width:100%;font-size:1rem;background:var(--bg);color:var(--fg);border:1px solid var(--bd);border-radius:12px;padding:10px;margin:4px 0}
 textarea{height:90px}
 #stage{position:relative;margin:0 auto;background:var(--soft);touch-action:none;user-select:none;-webkit-user-select:none;border-radius:12px;overflow:hidden}
-#pimg,#crop{display:block;width:auto;height:auto;max-width:100%;max-height:50vh;margin:0 auto;border-radius:12px;-webkit-touch-callout:none}
+#pimg,#crop{display:block;width:auto;height:auto;max-width:100%;max-height:100%;margin:0;border-radius:12px;-webkit-touch-callout:none}
 #box{position:absolute;display:none;border:2px solid var(--pink2);background:rgba(244,143,177,.2);box-shadow:0 0 0 999px rgba(0,0,0,.35);pointer-events:none}
 #out{font-size:1.5rem;line-height:2.1;margin-top:8px;word-break:break-all}
 .hl{background:var(--hl);border-radius:6px}
@@ -46,7 +46,12 @@ select{font-size:1rem;padding:6px;border-radius:10px;background:var(--bg);color:
 .bar{display:flex;gap:8px;position:sticky;bottom:max(12px,env(safe-area-inset-bottom));z-index:5;padding:8px 0;background:var(--card)}
 .bar button{margin:0;flex:1;padding:12px 4px;font-size:.95rem}
 .row.small button{margin:0;flex:1;padding:10px 4px;font-size:.9rem}
-#pbox{margin-bottom:8px}
+#pbox{height:40vh;display:flex;align-items:center;justify-content:center;background:var(--soft);border-radius:12px;margin-bottom:8px;overflow:hidden}
+.phead{display:flex;justify-content:space-between;align-items:center;margin:0 0 8px;padding:10px 14px;text-align:left}
+.pr{margin:2px 0}.pm{display:inline-block;padding:1px 2px;font-size:1.35rem;line-height:1.45}
+.ph{border-top:2px solid var(--pink2)}.pd{border-right:2px solid var(--pink2)}
+.chips{margin:6px 0}.fc{display:inline-block;background:var(--soft);border-radius:999px;padding:3px 10px;margin:0 4px 4px 0;font-size:.85rem}
+.fs{background:var(--pink2);color:#fff;font-weight:600}
 </style>
 </head>
 <body>
@@ -56,8 +61,11 @@ select{font-size:1rem;padding:6px;border-radius:10px;background:var(--bg);color:
 <div class="row"><label class="pick"><input type="file" id="cam" accept="image/*" capture="environment" hidden>📷 Take photo</label><label class="pick"><input type="file" id="photo" accept="image/*" hidden>🖼️ Choose</label></div>
 <div id="cw" hidden><div id="stage"><img id="pv" alt=""><div id="box"></div></div>
 <div class="bar"><button class="ghost" id="zreset">Reset</button><button class="ghost" id="rot">Rotate</button><button class="ghost" id="ccancel">Cancel</button><button id="cropbtn">Done</button></div></div>
-<div id="pbox" hidden></div>
-<div class="row small" id="prow" hidden><button class="ghost" id="pcrop">Crop</button><button class="ghost" id="prot">Rotate</button><button class="ghost" id="unc" hidden>Full photo</button><button class="ghost" id="hidebtn">Hide photo</button></div>
+<div id="psec" hidden>
+<button class="ghost phead" id="hidebtn"><span>Photo</span><span id="parr">▾</span></button>
+<div id="pbody"><div id="pbox"></div>
+<div class="row small" id="prow"><button class="ghost" id="pcrop">Crop</button><button class="ghost" id="prot">Rotate</button><button class="ghost" id="unc" hidden>Full photo</button></div></div>
+</div>
 </div>
 <div class="card"><textarea id="txt" placeholder="Paste Japanese text"></textarea>
 <div id="out"></div></div>
@@ -76,7 +84,7 @@ select{font-size:1rem;padding:6px;border-radius:10px;background:var(--bg);color:
 </details>
 
 <script>
-var $=function(i){return document.getElementById(i)},DB,TAGS={},T='',cur=null,enc=encodeURIComponent,JM=/^JMdict/i;
+var $=function(i){return document.getElementById(i)},DB,TAGS={},T='',BR={},cur=null,enc=encodeURIComponent,JM=/^JMdict/i;
 var esc=function(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')};
 var req=function(r){return new Promise(function(ok,no){r.onsuccess=function(){ok(r.result)};r.onerror=function(){no(r.error)}})};
 var done=function(t){return new Promise(function(ok,no){t.oncomplete=ok;t.onerror=t.onabort=function(){no(t.error)}})};
@@ -200,7 +208,7 @@ function defn(rows){
   var tags=(r.t||'').split(' ').filter(Boolean);
   return '<li data-dictionary="'+esc(r.d)+'"><i>('+[i+1].concat(tags,[r.d]).map(esc).join(', ')+')</i> <span>'+inner+'</span></li>'}).join('');
  return '<div style="text-align: left;" class="yomitan-glossary"><ol>'+li+'</ol></div>'}
-function sentence(i,L){return esc(T.slice(0,i))+'<b>'+esc(T.slice(i,i+L))+'</b>'+esc(T.slice(i+L))}
+function sentence(i,L){var h='';for(var k=0;k<T.length;k++){if(k>0&&BR[k])h+='<br>';if(k==i)h+='<b>';h+=esc(T[k]);if(k==i+L-1)h+='</b>'}return h}
 
 /* ---------- UI ---------- */
 var img0=new Image(),rot90=0,VZ=1,VA=0,TX=0,TY=0,SW=0,SH=0,fit=1,UP=null,BOX=null,prevBox=null,da=null,CR=null,ptrs={},pinch=null,drag=false,autoHid=false,RECT=null,picCache={},audioC={},SMALL_W=600,SMALL_Q=0.6,PAD=0.4,MODES=['tight','padded','original'],pm='padded',AU=true;
@@ -214,7 +222,7 @@ function scaled(c,mx){var m=Math.min(1,mx/Math.max(c.width,c.height));if(m>=1)re
 function refreshPhoto(){
  var c=CR?renderCrop(CR,CR.box,2000):scaled(UP,3000);
  c.toBlob(function(b){showPhoto(URL.createObjectURL(b))},'image/jpeg',0.92);
- $('unc').hidden=!CR;$('pbox').hidden=false;$('prow').hidden=false;$('hidebtn').textContent='Hide photo'}
+ $('unc').hidden=!CR;$('psec').hidden=false;setPhoto(true)}
 $('photo').onchange=$('cam').onchange=function(e){var f=e.target.files[0];if(!f)return;
  img0=new Image();img0.onload=function(){rot90=0;CR=null;RECT=null;picCache={};autoHid=false;$('cw').hidden=true;makeUP();refreshPhoto()};
  img0.src=URL.createObjectURL(f)};
@@ -233,7 +241,7 @@ function applyV(){$('pv').style.transform='translate('+TX+'px,'+TY+'px) rotate('
 function drawBox(){var b=$('box').style;if(!BOX||(BOX.w<2&&BOX.h<2)){b.display='none';return}
  b.display='block';b.left=BOX.x+'px';b.top=BOX.y+'px';b.width=BOX.w+'px';b.height=BOX.h+'px'}
 var spt=function(e){var r=$('stage').getBoundingClientRect();return {x:Math.max(0,Math.min(SW,e.clientX-r.left)),y:Math.max(0,Math.min(SH,e.clientY-r.top))}};
-$('pcrop').onclick=function(){VZ=1;VA=0;TX=0;TY=0;$('pbox').hidden=true;$('prow').hidden=true;$('cw').hidden=false;previewUP();layout()};
+$('pcrop').onclick=function(){VZ=1;VA=0;TX=0;TY=0;$('psec').hidden=true;$('cw').hidden=false;previewUP();layout()};
 $('ccancel').onclick=function(){$('cw').hidden=true;refreshPhoto()};
 $('prot').onclick=function(){rot90=(rot90+1)%4;CR=null;RECT=null;picCache={};makeUP();refreshPhoto()};
 $('unc').onclick=function(){CR=null;RECT=null;picCache={};refreshPhoto()};
@@ -272,13 +280,13 @@ $('cropbtn').onclick=function(){
  if(un&&!hasBox){CR=null;RECT=null;refreshPhoto();return}
  var b=hasBox?{x:BOX.x,y:BOX.y,w:BOX.w,h:BOX.h}:{x:0,y:0,w:SW,h:SH};
  CR={VZ:VZ,VA:VA,TX:TX,TY:TY,SW:SW,SH:SH,fit:fit,box:b};RECT=CR;refreshPhoto()};
-function setPhoto(v){$('pbox').hidden=!v;$('hidebtn').textContent=v?'Hide photo':'Show photo'}
-$('hidebtn').onclick=function(){setPhoto($('pbox').hidden)};
+function setPhoto(v){$('pbody').hidden=!v;$('parr').textContent=v?'▾':'▸'}
+$('hidebtn').onclick=function(){setPhoto($('pbody').hidden)};
 $('clearall').onclick=function(){
  img0=new Image();UP=null;CR=null;RECT=null;picCache={};rot90=0;VZ=1;VA=0;TX=0;TY=0;BOX=null;autoHid=false;drawBox();
- $('cw').hidden=true;$('pbox').hidden=true;$('pbox').innerHTML='';$('prow').hidden=true;$('pv').removeAttribute('src');
+ $('cw').hidden=true;$('psec').hidden=true;$('pbox').innerHTML='';$('pv').removeAttribute('src');
  $('photo').value='';$('cam').value='';
- $('txt').value='';T='';$('out').innerHTML='';$('card').hidden=true;$('card').innerHTML='';cur=null};
+ $('txt').value='';T='';BR={};$('out').innerHTML='';$('card').hidden=true;$('card').innerHTML='';cur=null};
 function padBox(b,p){return {x:b.x-b.w*p,y:b.y-b.h*p,w:b.w*(1+2*p),h:b.h*(1+2*p)}}
 function inside(t){
  var k=CR.VZ*CR.fit,ca=Math.cos(CR.VA),sa=Math.sin(CR.VA);
@@ -318,8 +326,8 @@ async function findAudio(w){
 function loadAudio(w){findAudio(w).then(function(h){audioC[w]=h}).catch(function(){audioC[w]=''}).then(function(){if(cur&&cur.gs&&cur.gs[cur.n].e==w)draw()})}
 
 /* ---------- text + card ---------- */
-$('txt').oninput=function(){if(UP&&!autoHid&&$('cw').hidden&&!$('pbox').hidden){var y0=$('txt').getBoundingClientRect().top;setPhoto(false);autoHid=true;window.scrollBy(0,$('txt').getBoundingClientRect().top-y0)}T=$('txt').value.replace(/[\r\n]+/g,'').trim();
- $('out').innerHTML=T.split('').map(function(c,i){return c=='\n'?'<br>':'<span data-i="'+i+'">'+esc(c)+'</span>'}).join('');
+$('txt').oninput=function(){if(UP&&!autoHid&&$('cw').hidden&&!$('psec').hidden&&!$('pbody').hidden){var y0=$('txt').getBoundingClientRect().top;setPhoto(false);autoHid=true;window.scrollBy(0,$('txt').getBoundingClientRect().top-y0)}var ls=$('txt').value.split(/[\r\n]+/).map(function(x){return x.trim()}).filter(Boolean),o=0;T=ls.join('');BR={};ls.forEach(function(x,j){if(j>0)BR[o]=true;o+=x.length});
+ $('out').innerHTML=T.split('').map(function(c,i){return (i>0&&BR[i]?'<br>':'')+'<span data-i="'+i+'">'+esc(c)+'</span>'}).join('');
  $('card').hidden=true};
 $('out').onclick=async function(e){
  var i=e.target.dataset.i;if(i==null||!DB)return;i=+i;
@@ -335,6 +343,11 @@ async function pick(mi){
  gs.sort(function(a,b){return (a.fs||1e12)-(b.fs||1e12)});
  cur.gs=gs;cur.n=0;cur.sentence=sentence(cur.i,m.L);draw()}
 var sp=function(p){return '<span style="display:inline;"><span>[</span><span>'+p+'</span><span>]</span></span>'};
+function morae(r){var o=[];Array.from(r).forEach(function(c){if('ゃゅょぁぃぅぇぉャュョァィゥェォ'.indexOf(c)>=0&&o.length)o[o.length-1]+=c;else o.push(c)});return o}
+function pcat(p,r){return p==0?'heiban':p==1?'atamadaka':p==mora(r)?'odaka':'nakadaka'}
+function pitchLine(r,p){var m=morae(r),q=Math.min(p,m.length);
+ return '<div class="pr">'+m.map(function(c,j){var hi=q==0?j>=1:q==1?j==0:(j>=1&&j<=q-1);
+  return '<span class="pm'+(hi?' ph':'')+(q>=1&&j==q-1?' pd':'')+'">'+esc(c)+'</span>'}).join('')+' <span class="mut">['+p+'] '+pcat(p,r)+'</span></div>'}
 function draw(){
  var g=cur.gs[cur.n],cat=g.ps.map(function(p){return p==0?'heiban':p==1?'atamadaka':p==mora(g.r)?'odaka':'nakadaka'}).join(',');
  if(AU&&audioC[g.e]===undefined){audioC[g.e]=null;loadAudio(g.e)}
@@ -346,13 +359,16 @@ function draw(){
   PitchPosition:g.ps.length==1?sp(g.ps[0]):g.ps.length?'<ol>'+g.ps.map(function(p){return '<li>'+sp(p)+'</li>'}).join('')+'</ol>':'',
   PitchCategories:cat,IsClickCard:'y',Picture:pic?'<img src="'+pic+'">':'',ExpressionAudio:au||''};
  cur.F=F;
+ var fd={},fo=[];g.fr.forEach(function(x){if(!fd[x.d]){fd[x.d]=[];fo.push(x.d)}fd[x.d].push(x.dv)});
+ var chips='<div class="chips">'+(F.FreqSort?'<span class="fc fs">FreqSort '+esc(F.FreqSort)+'</span>':'')+fo.map(function(d){return '<span class="fc">'+esc(d)+' '+fd[d].map(esc).join(' · ')+'</span>'}).join('')+'</div>';
+ var pitch=g.ps.map(function(p){return pitchLine(g.r,p)}).join('');
  var lens=cur.ms.length>1?'<div>'+cur.ms.map(function(m,j){return '<button class="t'+(j==cur.mi?' on':'')+'" data-m="'+j+'">'+esc(T.substr(cur.i,m.L))+'</button>'}).join('')+'</div>':'';
  var ents=cur.gs.length>1?'<div>'+cur.gs.map(function(x,j){return '<button class="t'+(j==cur.n?' on':'')+'" data-n="'+j+'">'+esc(x.e)+'【'+esc(x.r)+'】</button>'}).join('')+'</div>':'';
  var tags=tt.length?'<div>'+tt.map(function(x){return '<button class="tg" data-tag="'+esc(x)+'">'+esc(x)+'</button>'}).join('')+'</div><div class="mut" id="tagd"></div>':'';
  var thumb=pic?'<div class="frame"><img src="'+pic+'"></div>'+(CR?'<button class="t" data-pm="1">Photo: '+pm+' ▸</button>':''):'';
  var aud=AU?'<div class="mut">🔊 '+(au?'audio ready':au===''?'no audio found':'looking for audio…')+'</div>'+(au||''):'';
  $('card').hidden=false;
- $('card').innerHTML=lens+ents+'<h2>'+esc(g.e)+' 【'+esc(g.r)+'】</h2>'+tags+'<div>'+F.PitchPosition+' '+cat+'</div><div>'+F.Frequency+'</div><div>FreqSort: '+(F.FreqSort||'–')+'</div>'+aud+'<div>'+F.Sentence+'</div>'+F.MainDefinition+thumb+'<button id="send">Send to Anki</button>'}
+ $('card').innerHTML=lens+ents+'<h2>'+esc(g.e)+' 【'+esc(g.r)+'】</h2>'+tags+pitch+chips+aud+'<div>'+F.Sentence+'</div>'+F.MainDefinition+thumb+'<button id="send">Send to Anki</button>'}
 $('card').onclick=function(e){var b=e.target.closest('button');if(!b)return;
  if(b.dataset.m!=null)pick(+b.dataset.m);
  else if(b.dataset.n!=null){cur.n=+b.dataset.n;draw()}
@@ -366,8 +382,8 @@ $('card').onclick=function(e){var b=e.target.closest('button');if(!b)return;
 ['deck','ntype'].forEach(function(k){try{var v=localStorage.getItem(k);if(v)$(k).value=v}catch(e){}
  $(k).onchange=function(){try{localStorage.setItem(k,$(k).value)}catch(e){}}});
 openDB().then(function(d){DB=d;refresh()});
-var VER='v9';$('ver').textContent='Version '+VER;
-function offline(){caches.open('mining-v9').then(function(c){return c.keys()}).then(function(a){$('off').textContent=a.length?'Offline ready ('+a.length+' files saved)':'Offline not ready yet'}).catch(function(){$('off').textContent='Offline not available'})}
+var VER='v10';$('ver').textContent='Version '+VER;
+function offline(){caches.open('mining-v10').then(function(c){return c.keys()}).then(function(a){$('off').textContent=a.length?'Offline ready ('+a.length+' files saved)':'Offline not ready yet'}).catch(function(){$('off').textContent='Offline not available'})}
 if('serviceWorker' in navigator){
  var had=!!navigator.serviceWorker.controller,ban=function(){$('upd').hidden=false};
  $('upd').onclick=function(){location.reload()};
