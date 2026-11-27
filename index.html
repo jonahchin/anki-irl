@@ -27,7 +27,7 @@ button.t.on{background:var(--pink2);color:#fff}
 .pick{display:block;text-align:center;padding:13px;border-radius:14px;background:var(--soft);font-weight:600}
 textarea,input[type=text]{width:100%;font-size:1rem;background:var(--bg);color:var(--fg);border:1px solid var(--bd);border-radius:12px;padding:10px;margin:4px 0}
 textarea{height:90px}
-#stage{position:relative;margin:0 auto;touch-action:none;user-select:none;-webkit-user-select:none;border-radius:12px;overflow:hidden}
+#stage{position:relative;margin:0 auto;background:var(--soft);touch-action:none;user-select:none;-webkit-user-select:none;border-radius:12px;overflow:hidden}
 #pimg,#crop{display:block;width:auto;height:auto;max-width:100%;max-height:50vh;margin:0 auto;border-radius:12px;-webkit-touch-callout:none}
 #box{position:absolute;display:none;border:2px solid var(--pink2);background:rgba(244,143,177,.2);box-shadow:0 0 0 999px rgba(0,0,0,.35);pointer-events:none}
 #out{font-size:1.5rem;line-height:2.1;margin-top:8px;word-break:break-all}
@@ -44,19 +44,20 @@ select{font-size:1rem;padding:6px;border-radius:10px;background:var(--bg);color:
 #upd{position:fixed;top:max(8px,env(safe-area-inset-top));left:50%;transform:translateX(-50%);z-index:20;background:var(--pink2);color:#fff;padding:8px 16px;border-radius:999px;font-size:.9rem;box-shadow:0 4px 14px rgba(0,0,0,.25)}
 #pv{position:absolute;left:0;top:0;max-width:none;max-height:none;pointer-events:none;-webkit-user-drag:none}
 .bar{display:flex;gap:8px;position:sticky;bottom:max(12px,env(safe-area-inset-bottom));z-index:5;padding:8px 0;background:var(--card)}
-.bar button{margin:0;flex:1}
+.bar button{margin:0;flex:1;padding:12px 4px;font-size:.95rem}
+.row.small button{margin:0;flex:1;padding:10px 4px;font-size:.9rem}
+#pbox{margin-bottom:8px}
 </style>
 </head>
 <body>
 <div id="upd" hidden>Update ready, tap to reload</div>
-<h1>🌸 Mining</h1>
+<div style="display:flex;align-items:center;justify-content:space-between"><h1>🌸 Mining</h1><button class="t" id="clearall" style="margin:0 0 14px">Clear</button></div>
 <div class="card">
 <div class="row"><label class="pick"><input type="file" id="cam" accept="image/*" capture="environment" hidden>📷 Take photo</label><label class="pick"><input type="file" id="photo" accept="image/*" hidden>🖼️ Choose</label></div>
 <div id="cw" hidden><div id="stage"><img id="pv" alt=""><div id="box"></div></div>
-<div class="bar"><button class="ghost" id="zreset">Reset</button><button class="ghost" id="rot">Rotate 90°</button><button id="cropbtn">Done</button></div></div>
-<img id="crop" alt="" hidden>
-<button class="ghost" id="hidebtn" hidden>Hide photo</button>
-<button class="ghost" id="recrop" hidden>Re-crop</button>
+<div class="bar"><button class="ghost" id="zreset">Reset</button><button class="ghost" id="rot">Rotate</button><button class="ghost" id="ccancel">Cancel</button><button id="cropbtn">Done</button></div></div>
+<div id="pbox" hidden></div>
+<div class="row small" id="prow" hidden><button class="ghost" id="pcrop">Crop</button><button class="ghost" id="prot">Rotate</button><button class="ghost" id="unc" hidden>Full photo</button><button class="ghost" id="hidebtn">Hide photo</button></div>
 </div>
 <div class="card"><textarea id="txt" placeholder="Paste Japanese text"></textarea>
 <div id="out"></div></div>
@@ -199,11 +200,7 @@ function defn(rows){
   var tags=(r.t||'').split(' ').filter(Boolean);
   return '<li data-dictionary="'+esc(r.d)+'"><i>('+[i+1].concat(tags,[r.d]).map(esc).join(', ')+')</i> <span>'+inner+'</span></li>'}).join('');
  return '<div style="text-align: left;" class="yomitan-glossary"><ol>'+li+'</ol></div>'}
-function sentence(i,L){var a=i,b=i+L,end=/[。！？\n]/;
- while(a>0&&!end.test(T[a-1]))a--;
- while(b<T.length&&!end.test(T[b]))b++;
- if(b<T.length&&T[b]!='\n')b++;
- return esc(T.slice(a,i))+'<b>'+esc(T.slice(i,i+L))+'</b>'+esc(T.slice(i+L,b))}
+function sentence(i,L){return esc(T.slice(0,i))+'<b>'+esc(T.slice(i,i+L))+'</b>'+esc(T.slice(i+L))}
 
 /* ---------- UI ---------- */
 var img0=new Image(),rot90=0,VZ=1,VA=0,TX=0,TY=0,SW=0,SH=0,fit=1,UP=null,BOX=null,prevBox=null,da=null,CR=null,ptrs={},pinch=null,drag=false,autoHid=false,RECT=null,picCache={},audioC={},SMALL_W=600,SMALL_Q=0.6,PAD=0.4,MODES=['tight','padded','original'],pm='padded',AU=true;
@@ -211,28 +208,37 @@ try{pm=localStorage.getItem('pm')||'padded';AU=localStorage.getItem('au')!=='0'}
 if(pm=='whole')pm='original';$('pm').value=pm;$('au').checked=AU;
 $('pm').onchange=function(){pm=this.value;try{localStorage.setItem('pm',pm)}catch(e){}};
 $('au').onchange=function(){AU=this.checked;try{localStorage.setItem('au',AU?'1':'0')}catch(e){}};
+var lastURL='',PR=null;
+function showPhoto(u){if(lastURL)URL.revokeObjectURL(lastURL);lastURL=u;var i=new Image();i.id='crop';i.alt='';i.src=u;$('pbox').innerHTML='';$('pbox').appendChild(i)}
+function scaled(c,mx){var m=Math.min(1,mx/Math.max(c.width,c.height));if(m>=1)return c;var o=document.createElement('canvas');o.width=Math.round(c.width*m);o.height=Math.round(c.height*m);o.getContext('2d').drawImage(c,0,0,o.width,o.height);return o}
+function refreshPhoto(){
+ var c=CR?renderCrop(CR,CR.box,2000):scaled(UP,3000);
+ c.toBlob(function(b){showPhoto(URL.createObjectURL(b))},'image/jpeg',0.92);
+ $('unc').hidden=!CR;$('pbox').hidden=false;$('prow').hidden=false;$('hidebtn').textContent='Hide photo'}
 $('photo').onchange=$('cam').onchange=function(e){var f=e.target.files[0];if(!f)return;
- img0=new Image();img0.onload=function(){
-  rot90=0;VZ=1;VA=0;TX=0;TY=0;CR=null;RECT=null;picCache={};autoHid=false;
-  $('cw').hidden=false;$('crop').hidden=true;$('recrop').hidden=true;$('hidebtn').hidden=true;buildUP()};
+ img0=new Image();img0.onload=function(){rot90=0;CR=null;RECT=null;picCache={};autoHid=false;$('cw').hidden=true;makeUP();refreshPhoto()};
  img0.src=URL.createObjectURL(f)};
-function buildUP(){
+function makeUP(){
  var W=img0.naturalWidth,H=img0.naturalHeight,u=Math.min(1,Math.sqrt(1.6e7/(W*H))),q=rot90%2,w=Math.round((q?H:W)*u),h=Math.round((q?W:H)*u);
  UP=document.createElement('canvas');UP.width=w;UP.height=h;
- var x=UP.getContext('2d');x.translate(w/2,h/2);x.rotate(rot90*Math.PI/2);x.scale(u,u);x.drawImage(img0,-W/2,-H/2);
- var m=Math.min(1,1600/Math.max(w,h)),p=document.createElement('canvas');p.width=Math.round(w*m);p.height=Math.round(h*m);
- p.getContext('2d').drawImage(UP,0,0,p.width,p.height);$('pv').src=p.toDataURL('image/jpeg',0.85);layout()}
+ var x=UP.getContext('2d');x.translate(w/2,h/2);x.rotate(rot90*Math.PI/2);x.scale(u,u);x.drawImage(img0,-W/2,-H/2)}
+function previewUP(){var m=Math.min(1,1600/Math.max(UP.width,UP.height)),p=document.createElement('canvas');p.width=Math.round(UP.width*m);p.height=Math.round(UP.height*m);
+ p.getContext('2d').drawImage(UP,0,0,p.width,p.height);$('pv').src=p.toDataURL('image/jpeg',0.85)}
 function layout(){
- var cw=$('cw').clientWidth||300,mh=Math.round(innerHeight*0.5);
- SW=Math.min(cw,mh*UP.width/UP.height);SH=SW*UP.height/UP.width;fit=SW/UP.width;
- var st=$('stage').style,pv=$('pv').style;st.width=SW+'px';st.height=SH+'px';pv.width=SW+'px';pv.height=SH+'px';
+ SW=$('cw').clientWidth||300;SH=Math.round(innerHeight*0.5);fit=Math.min(SW/UP.width,SH/UP.height);
+ var pw=UP.width*fit,ph=UP.height*fit;PR={x:(SW-pw)/2,y:(SH-ph)/2,w:pw,h:ph};
+ var st=$('stage').style,pv=$('pv').style;st.width=SW+'px';st.height=SH+'px';pv.width=pw+'px';pv.height=ph+'px';pv.left=PR.x+'px';pv.top=PR.y+'px';
  BOX=null;drawBox();applyV()}
 function applyV(){$('pv').style.transform='translate('+TX+'px,'+TY+'px) rotate('+VA+'rad) scale('+VZ+')'}
 function drawBox(){var b=$('box').style;if(!BOX||(BOX.w<2&&BOX.h<2)){b.display='none';return}
  b.display='block';b.left=BOX.x+'px';b.top=BOX.y+'px';b.width=BOX.w+'px';b.height=BOX.h+'px'}
 var spt=function(e){var r=$('stage').getBoundingClientRect();return {x:Math.max(0,Math.min(SW,e.clientX-r.left)),y:Math.max(0,Math.min(SH,e.clientY-r.top))}};
+$('pcrop').onclick=function(){VZ=1;VA=0;TX=0;TY=0;$('pbox').hidden=true;$('prow').hidden=true;$('cw').hidden=false;previewUP();layout()};
+$('ccancel').onclick=function(){$('cw').hidden=true;refreshPhoto()};
+$('prot').onclick=function(){rot90=(rot90+1)%4;CR=null;RECT=null;picCache={};makeUP();refreshPhoto()};
+$('unc').onclick=function(){CR=null;RECT=null;picCache={};refreshPhoto()};
 $('zreset').onclick=function(){VZ=1;VA=0;TX=0;TY=0;applyV()};
-$('rot').onclick=function(){rot90=(rot90+1)%4;VZ=1;VA=0;TX=0;TY=0;buildUP()};
+$('rot').onclick=function(){rot90=(rot90+1)%4;CR=null;RECT=null;picCache={};VZ=1;VA=0;TX=0;TY=0;makeUP();previewUP();layout()};
 $('stage').onpointerdown=function(e){
  this.setPointerCapture(e.pointerId);ptrs[e.pointerId]={x:e.clientX,y:e.clientY};
  var ids=Object.keys(ptrs);
@@ -261,12 +267,18 @@ function renderCrop(C,b,maxW){
  x.setTransform(m*ca,m*sa,-m*sa,m*ca,m*s*(C.SW/2+C.TX-b.x)-m*(ca*px-sa*py),m*s*(C.SH/2+C.TY-b.y)-m*(sa*px+ca*py));
  x.drawImage(UP,0,0);return c}
 $('cropbtn').onclick=function(){
- var b=BOX&&BOX.w>12&&BOX.h>12?{x:BOX.x,y:BOX.y,w:BOX.w,h:BOX.h}:{x:0,y:0,w:SW,h:SH};
- CR={VZ:VZ,VA:VA,TX:TX,TY:TY,SW:SW,SH:SH,fit:fit,box:b};RECT=CR;picCache={};
- renderCrop(CR,b,2000).toBlob(function(bl){$('crop').src=URL.createObjectURL(bl);$('crop').hidden=false;$('cw').hidden=true;$('recrop').hidden=false;$('hidebtn').hidden=false;$('hidebtn').textContent='Hide photo';autoHid=false},'image/jpeg',0.92)};
-$('recrop').onclick=function(){$('cw').hidden=false;$('crop').hidden=true;$('recrop').hidden=true;$('hidebtn').hidden=true};
-function setPhoto(v){$('crop').hidden=!v;$('hidebtn').textContent=v?'Hide photo':'Show photo'}
-$('hidebtn').onclick=function(){setPhoto($('crop').hidden)};
+ var un=VZ==1&&VA==0&&TX==0&&TY==0,hasBox=BOX&&BOX.w>12&&BOX.h>12;
+ $('cw').hidden=true;autoHid=false;picCache={};
+ if(un&&!hasBox){CR=null;RECT=null;refreshPhoto();return}
+ var b=hasBox?{x:BOX.x,y:BOX.y,w:BOX.w,h:BOX.h}:{x:0,y:0,w:SW,h:SH};
+ CR={VZ:VZ,VA:VA,TX:TX,TY:TY,SW:SW,SH:SH,fit:fit,box:b};RECT=CR;refreshPhoto()};
+function setPhoto(v){$('pbox').hidden=!v;$('hidebtn').textContent=v?'Hide photo':'Show photo'}
+$('hidebtn').onclick=function(){setPhoto($('pbox').hidden)};
+$('clearall').onclick=function(){
+ img0=new Image();UP=null;CR=null;RECT=null;picCache={};rot90=0;VZ=1;VA=0;TX=0;TY=0;BOX=null;autoHid=false;drawBox();
+ $('cw').hidden=true;$('pbox').hidden=true;$('pbox').innerHTML='';$('prow').hidden=true;$('pv').removeAttribute('src');
+ $('photo').value='';$('cam').value='';
+ $('txt').value='';T='';$('out').innerHTML='';$('card').hidden=true;$('card').innerHTML='';cur=null};
 function padBox(b,p){return {x:b.x-b.w*p,y:b.y-b.h*p,w:b.w*(1+2*p),h:b.h*(1+2*p)}}
 function inside(t){
  var k=CR.VZ*CR.fit,ca=Math.cos(CR.VA),sa=Math.sin(CR.VA);
@@ -274,7 +286,7 @@ function inside(t){
   var dx=c[0]-CR.SW/2-CR.TX,dy=c[1]-CR.SH/2-CR.TY,X=UP.width/2+(ca*dx+sa*dy)/k,Y=UP.height/2+(-sa*dx+ca*dy)/k;
   return X>=0&&X<=UP.width&&Y>=0&&Y<=UP.height})}
 function picFor(mode){
- if(!CR)return '';if(picCache[mode])return picCache[mode];
+ if(!UP)return '';if(!CR)mode='original';if(picCache[mode])return picCache[mode];
  var c,g=0,h;
  if(mode=='original'){c=UP;while(c.width>SMALL_W*2&&g++<6){h=document.createElement('canvas');h.width=Math.round(c.width/2);h.height=Math.round(c.height/2);h.getContext('2d').drawImage(c,0,0,h.width,h.height);c=h}}
  else{var b=CR.box;
@@ -306,7 +318,7 @@ async function findAudio(w){
 function loadAudio(w){findAudio(w).then(function(h){audioC[w]=h}).catch(function(){audioC[w]=''}).then(function(){if(cur&&cur.gs&&cur.gs[cur.n].e==w)draw()})}
 
 /* ---------- text + card ---------- */
-$('txt').oninput=function(){if(RECT&&!autoHid&&$('cw').hidden&&!$('crop').hidden){var y0=$('txt').getBoundingClientRect().top;setPhoto(false);autoHid=true;window.scrollBy(0,$('txt').getBoundingClientRect().top-y0)}T=$('txt').value.trim();
+$('txt').oninput=function(){if(UP&&!autoHid&&$('cw').hidden&&!$('pbox').hidden){var y0=$('txt').getBoundingClientRect().top;setPhoto(false);autoHid=true;window.scrollBy(0,$('txt').getBoundingClientRect().top-y0)}T=$('txt').value.replace(/[\r\n]+/g,'').trim();
  $('out').innerHTML=T.split('').map(function(c,i){return c=='\n'?'<br>':'<span data-i="'+i+'">'+esc(c)+'</span>'}).join('');
  $('card').hidden=true};
 $('out').onclick=async function(e){
@@ -337,7 +349,7 @@ function draw(){
  var lens=cur.ms.length>1?'<div>'+cur.ms.map(function(m,j){return '<button class="t'+(j==cur.mi?' on':'')+'" data-m="'+j+'">'+esc(T.substr(cur.i,m.L))+'</button>'}).join('')+'</div>':'';
  var ents=cur.gs.length>1?'<div>'+cur.gs.map(function(x,j){return '<button class="t'+(j==cur.n?' on':'')+'" data-n="'+j+'">'+esc(x.e)+'【'+esc(x.r)+'】</button>'}).join('')+'</div>':'';
  var tags=tt.length?'<div>'+tt.map(function(x){return '<button class="tg" data-tag="'+esc(x)+'">'+esc(x)+'</button>'}).join('')+'</div><div class="mut" id="tagd"></div>':'';
- var thumb=pic?'<div class="frame"><img src="'+pic+'"></div><button class="t" data-pm="1">Photo: '+pm+' ▸</button>':'';
+ var thumb=pic?'<div class="frame"><img src="'+pic+'"></div>'+(CR?'<button class="t" data-pm="1">Photo: '+pm+' ▸</button>':''):'';
  var aud=AU?'<div class="mut">🔊 '+(au?'audio ready':au===''?'no audio found':'looking for audio…')+'</div>'+(au||''):'';
  $('card').hidden=false;
  $('card').innerHTML=lens+ents+'<h2>'+esc(g.e)+' 【'+esc(g.r)+'】</h2>'+tags+'<div>'+F.PitchPosition+' '+cat+'</div><div>'+F.Frequency+'</div><div>FreqSort: '+(F.FreqSort||'–')+'</div>'+aud+'<div>'+F.Sentence+'</div>'+F.MainDefinition+thumb+'<button id="send">Send to Anki</button>'}
@@ -354,8 +366,8 @@ $('card').onclick=function(e){var b=e.target.closest('button');if(!b)return;
 ['deck','ntype'].forEach(function(k){try{var v=localStorage.getItem(k);if(v)$(k).value=v}catch(e){}
  $(k).onchange=function(){try{localStorage.setItem(k,$(k).value)}catch(e){}}});
 openDB().then(function(d){DB=d;refresh()});
-var VER='v6';$('ver').textContent='Version '+VER;
-function offline(){caches.open('mining-v6').then(function(c){return c.keys()}).then(function(a){$('off').textContent=a.length?'Offline ready ('+a.length+' files saved)':'Offline not ready yet'}).catch(function(){$('off').textContent='Offline not available'})}
+var VER='v9';$('ver').textContent='Version '+VER;
+function offline(){caches.open('mining-v9').then(function(c){return c.keys()}).then(function(a){$('off').textContent=a.length?'Offline ready ('+a.length+' files saved)':'Offline not ready yet'}).catch(function(){$('off').textContent='Offline not available'})}
 if('serviceWorker' in navigator){
  var had=!!navigator.serviceWorker.controller,ban=function(){$('upd').hidden=false};
  $('upd').onclick=function(){location.reload()};
